@@ -1,11 +1,10 @@
 # (TRAVA BLINDADA DE CONTROLE ABSOLUTO)
-# VERSÃO 3 - Implementa o fluxo pedagógico completo sugerido pelo Raphael.
-# - Adiciona campos de input para o aluno testar sua resposta.
-# - Adiciona o botão "Verificar Resposta" com feedback.
-# - Melhora a função do botão "Próximo Desafio" para limpar os inputs.
-# - Aumenta o tamanho das fontes para melhor legibilidade em telas menores (responsividade).
-# - Adiciona textos explicativos sobre o MMC diretamente na interface.
-# - Garante que o aviso de 'deprecation' não apareça.
+# VERSÃO 4 - Reestruturação pedagógica completa baseada no feedback do Raphael.
+# - Fluxo de Múltiplas Etapas: Problema > Teste de MMC > Explicação > Teste de Resposta Final > Confirmação Visual.
+# - Responsividade: O texto das frações agora é gerado pelo Streamlit (HTML) e não na imagem, garantindo legibilidade em qualquer tela.
+# - Visualização: Linhas divisórias das barras agora são pretas para melhor contraste.
+# - Interatividade: Adiciona campo para testar o conhecimento do MMC.
+# - Pedagogia: Inclui texto explicativo detalhado sobre como os numeradores são ajustados após encontrar o MMC.
 
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
@@ -18,165 +17,172 @@ def lcm(a, b):
 
 def simplify_fraction(n, d):
     if n == 0: return 0, 1
+    if d == 0: return n, 0 # Avoid division by zero
     common_divisor = math.gcd(n, d)
     return n // common_divisor, d // common_divisor
 
-# --- LÓGICA DE GERAÇÃO DA IMAGEM ---
-def create_fraction_bar_image(n1, d1, n2, d2, operation, title, show_lcm=False, show_result=False, bar_color1='#4A90E2', bar_color2='#50E3C2', bg_color='#FFFFFF', text_color='#000000'):
+# --- LÓGICA DE GERAÇÃO DA IMAGEM (AGORA SÓ GRÁFICOS) ---
+def create_fraction_bar_image(n_list, d_list, colors, title=""):
     img_width = 800
-    img_height = 480 if show_result else 320
     bar_height = 80
-    padding = 50
+    padding = 20
+    vertical_gap = 100
+    img_height = padding * 2 + len(n_list) * bar_height + (len(n_list) - 1) * (vertical_gap - bar_height)
 
-    try:
-        # Tamanhos de fonte aumentados para legibilidade no celular
-        font_title = ImageFont.truetype("arialbd.ttf", 30) # Negrito
-        font_fraction = ImageFont.truetype("arialbd.ttf", 28) # Negrito
-        font_label = ImageFont.truetype("arial.ttf", 20)
-    except IOError:
-        font_title = ImageFont.load_default()
-        font_fraction = ImageFont.load_default()
-        font_label = ImageFont.load_default()
+    bg_color = '#FFFFFF'
+    outline_color = '#000000'
 
     image = Image.new('RGB', (img_width, img_height), bg_color)
     draw = ImageDraw.Draw(image)
 
-    title_bbox = draw.textbbox((0, 0), title, font=font_title)
-    title_w = title_bbox[2] - title_bbox[0]
-    draw.text(((img_width - title_w) / 2, 15), title, font=font_title, fill=text_color)
+    try:
+        font_title = ImageFont.truetype("arialbd.ttf", 30)
+    except IOError:
+        font_title = ImageFont.load_default()
+
+    if title:
+        title_bbox = draw.textbbox((0, 0), title, font=font_title)
+        title_w = title_bbox[2] - title_bbox[0]
+        draw.text(((img_width - title_w) / 2, 10), title, font=font_title, fill=outline_color)
 
     bar_width = img_width - 2 * padding
-    y1, y2 = 90, 210
-    common_denominator = lcm(d1, d2)
 
-    def draw_bar(y, n, d, color, original_text=""):
-        draw.rectangle([padding, y, padding + bar_width, y + bar_height], outline=text_color, width=2)
+    for i, (n, d, color) in enumerate(zip(n_list, d_list, colors)):
+        y = padding + 50 + i * vertical_gap
+
+        # Draw bar outline
+        draw.rectangle([padding, y, padding + bar_width, y + bar_height], outline=outline_color, width=2)
+
+        # Draw filled portion
         fill_width = (n / d) * bar_width if d != 0 else 0
         draw.rectangle([padding, y, padding + fill_width, y + bar_height], fill=color)
-        for i in range(1, d):
-            x = padding + (i / d) * bar_width
-            draw.line([x, y, x, y + bar_height], fill=bg_color, width=3)
-        draw.text((padding + bar_width + 15, y + bar_height/2 - 15), f"{n}/{d}", font=font_fraction, fill=text_color)
-        if original_text:
-            draw.text((padding - 50, y + bar_height/2 - 12), original_text, font=font_label, fill=text_color)
 
-    if not show_lcm:
-        draw_bar(y1, n1, d1, bar_color1)
-        draw_bar(y2, n2, d2, bar_color2)
-    else:
-        n1_equiv = n1 * (common_denominator // d1)
-        draw_bar(y1, n1_equiv, common_denominator, bar_color1, original_text=f"({n1}/{d1})")
-        n2_equiv = n2 * (common_denominator // d2)
-        draw_bar(y2, n2_equiv, common_denominator, bar_color2, original_text=f"({n2}/{d2})")
-
-    if show_result:
-        y_result = 360
-        n_result_num = 0
-        if operation == 'Soma':
-            n_result_num = (n1 * (common_denominator // d1)) + (n2 * (common_denominator // d2))
-        else:
-            n_result_num = (n1 * (common_denominator // d1)) - (n2 * (common_denominator // d2))
-
-        n_simple, d_simple = simplify_fraction(n_result_num, common_denominator)
-        result_text = f"Resultado: {n_result_num}/{common_denominator}"
-        if (n_simple, d_simple) != (n_result_num, common_denominator):
-             result_text += f" = {n_simple}/{d_simple}"
-
-        draw_bar(y_result, n_result_num, common_denominator, '#E34A7F')
-
-        result_bbox = draw.textbbox((0, 0), result_text, font=font_title)
-        result_w = result_bbox[2] - result_bbox[0]
-        draw.text(((img_width - result_w) / 2, y_result - 40), result_text, font=font_title, fill=text_color)
+        # Draw divider lines in black for contrast
+        for j in range(1, d):
+            x = padding + (j / d) * bar_width
+            draw.line([x, y, x, y + bar_height], fill=outline_color, width=2)
 
     return image
 
 # --- LÓGICA DO APLICATIVO STREAMLIT ---
-st.set_page_config(layout="wide")
+st.set_page_config(layout="wide", page_title="Laboratório de Frações")
 
-# Inicializa o session_state
-if 'step' not in st.session_state:
-    st.session_state.step = 0 # 0: initial, 1: checked, 2: reset
+# Inicializa o session_state para controlar o fluxo
+if 'step' not in st.session_state: st.session_state.step = "INPUT_MMC"
+if 'mmc_guess' not in st.session_state: st.session_state.mmc_guess = 0
+if 'mmc_correct' not in st.session_state: st.session_state.mmc_correct = False
 if 'n1' not in st.session_state: st.session_state.n1 = 1
-if 'd1' not in st.session_state: st.session_state.d1 = 2
+if 'd1' not in st.session_state: st.session_state.d1 = 4
 if 'n2' not in st.session_state: st.session_state.n2 = 1
-if 'd2' not in st.session_state: st.session_state.d2 = 3
-if 'ans_n' not in st.session_state: st.session_state.ans_n = 0
-if 'ans_d' not in st.session_state: st.session_state.ans_d = 1
+if 'd2' not in st.session_state: st.session_state.d2 = 6
 
-
-st.sidebar.title("### GERADOR DE MISSÃO: GM-03")
+# --- LAYOUT DA SIDEBAR ---
+st.sidebar.title("Missão: Orçamento")
 st.sidebar.header("Painel de Controle")
-
-# --- MODO 1: LABORATÓRIO INTERATIVO ---
-st.title("Laboratório de Orçamento da Missão")
-st.sidebar.subheader("Controles do Desafio")
-op_select = st.sidebar.radio("Operação:", ('Soma', 'Subtração'), key='op_sim')
-
-# Inputs na sidebar
+op_select = st.sidebar.radio("Selecione a Operação:", ('Soma', 'Subtração'), key='op_sim')
 st.sidebar.markdown("---")
-st.session_state.n1 = st.sidebar.number_input("Numerador 1", min_value=1, value=st.session_state.n1)
-st.session_state.d1 = st.sidebar.number_input("Denominador 1", min_value=2, value=st.session_state.d1)
+st.session_state.n1 = st.sidebar.number_input("Numerador 1", min_value=1, value=st.session_state.n1, key="n1_key")
+st.session_state.d1 = st.sidebar.number_input("Denominador 1", min_value=2, value=st.session_state.d1, key="d1_key")
 st.sidebar.markdown("---")
-st.session_state.n2 = st.sidebar.number_input("Numerador 2", min_value=1, value=st.session_state.n2)
-st.session_state.d2 = st.sidebar.number_input("Denominador 2", min_value=2, value=st.session_state.d2)
+st.session_state.n2 = st.sidebar.number_input("Numerador 2", min_value=1, value=st.session_state.n2, key="n2_key")
+st.session_state.d2 = st.sidebar.number_input("Denominador 2", min_value=2, value=st.session_state.d2, key="d2_key")
 
-# --- FLUXO NARRATIVO GUIADO ---
-st.subheader("ETAPA 1: O Problema")
-st.info("Comandante, observe as barras. Os 'pedaços' de cada orçamento têm o mesmo tamanho? Podemos juntá-los diretamente?")
-problem_img = create_fraction_bar_image(st.session_state.n1, st.session_state.d1, st.session_state.n2, st.session_state.d2, op_select, "Visualização do Problema", show_result=False)
-st.image(problem_img, use_container_width=True)
+if st.sidebar.button("🚀 Novo Desafio", use_container_width=True):
+    st.session_state.step = "INPUT_MMC"
+    st.session_state.mmc_correct = False
+    st.session_state.mmc_guess = 0
+    st.experimental_rerun()
 
-st.subheader("ETAPA 2: A Solução (MMC)")
-st.info("Para somar, precisamos de pedaços do mesmo tamanho. O MMC (Mínimo Múltiplo Comum) nos ajuda a encontrar o 'corte' perfeito para as duas barras.")
-solution_img = create_fraction_bar_image(st.session_state.n1, st.session_state.d1, st.session_state.n2, st.session_state.d2, op_select, "Visualização com Denominador Comum (MMC)", show_lcm=True, show_result=False)
-st.image(solution_img, use_container_width=True)
-st.markdown(f"> **Explicação:** O MMC entre **{st.session_state.d1}** e **{st.session_state.d2}** é **{lcm(st.session_state.d1, st.session_state.d2)}**. Por isso, a ferramenta re-dividiu as barras em pedaços desse tamanho. É para isso que o MMC serve!")
+# --- LAYOUT PRINCIPAL ---
+st.title("Laboratório Interativo de Frações")
 
-st.subheader("ETAPA 3: Teste seu Cálculo")
-st.info("Agora que as barras estão divididas igualmente, calcule o resultado final no seu caderno e digite sua resposta abaixo.")
+n1, d1, n2, d2 = st.session_state.n1, st.session_state.d1, st.session_state.n2, st.session_state.d2
+correct_mmc = lcm(d1, d2)
 
-# Inputs para a resposta do aluno
-col1, col2 = st.columns(2)
-with col1:
-    st.session_state.ans_n = st.number_input("Seu Numerador:", min_value=0, value=st.session_state.ans_n, key="ans_n_key")
-with col2:
-    st.session_state.ans_d = st.number_input("Seu Denominador:", min_value=1, value=st.session_state.ans_d, key="ans_d_key")
+# ETAPA 1: APRESENTAÇÃO DO PROBLEMA
+st.header("ETAPA 1: O Problema")
+st.info("Observe os orçamentos. Os 'pedaços' de cada barra têm o mesmo tamanho? Não podemos somar/subtrair pedaços de tamanhos diferentes!")
 
-# Botões de Ação
-btn_check = st.button("Verificar Minha Resposta", type="primary", use_container_width=True)
+img_col1, text_col1 = st.columns([4, 1])
+with img_col1:
+    problem_img = create_fraction_bar_image([n1, n2], [d1, d2], ['#4A90E2', '#50E3C2'])
+    st.image(problem_img)
+with text_col1:
+    st.markdown(f"<p style='font-size: 44px; font-weight: bold; margin-top: 70px;'>{n1}/{d1}</p>", unsafe_allow_html=True)
+    st.markdown(f"<p style='font-size: 44px; font-weight: bold; margin-top: 55px;'>{op_select[0]}</p>", unsafe_allow_html=True)
+    st.markdown(f"<p style='font-size: 44px; font-weight: bold; margin-top: 55px;'>{n2}/{d2}</p>", unsafe_allow_html=True)
 
-if btn_check:
-    st.session_state.step = 1 # Mudar para o estado "verificado"
+# ETAPA 2: TESTE DO MMC
+st.header("ETAPA 2: Encontrando o Denominador Comum")
+if not st.session_state.mmc_correct:
+    st.warning("Para somar, precisamos 're-dividir' as barras em pedaços iguais. Qual é o menor número de pedaços (MMC) que funciona para os denominadores {} e {}?".format(d1, d2))
+    st.session_state.mmc_guess = st.number_input("Digite sua resposta para o MMC:", min_value=1, key="mmc_input")
+    if st.button("Verificar MMC", type="primary"):
+        if st.session_state.mmc_guess == correct_mmc:
+            st.session_state.mmc_correct = True
+            st.experimental_rerun()
+        else:
+            st.error(f"Incorreto. O MMC de {d1} e {d2} não é {st.session_state.mmc_guess}. Tente de novo! Dica: procure o primeiro número que aparece na tabuada dos dois.")
 
-    # Calcular a resposta correta
-    common_d = lcm(st.session_state.d1, st.session_state.d2)
+# ETAPA 3: EXPLICAÇÃO E TESTE DA RESPOSTA FINAL
+if st.session_state.mmc_correct:
+    st.success(f"**Exato!** O denominador comum é **{correct_mmc}**.")
+
+    n1_equiv = n1 * (correct_mmc // d1)
+    n2_equiv = n2 * (correct_mmc // d2)
+
+    st.info("Agora que as barras estão divididas igualmente, veja como as frações originais se transformam:")
+
+    img_col2, text_col2 = st.columns([4, 1])
+    with img_col2:
+        equiv_img = create_fraction_bar_image([n1_equiv, n2_equiv], [correct_mmc, correct_mmc], ['#4A90E2', '#50E3C2'])
+        st.image(equiv_img)
+    with text_col2:
+        st.markdown(f"""
+        <p style='font-size: 20px; margin-top: 60px;'>Original: <strong>{n1}/{d1}</strong></p>
+        <p style='font-size: 44px; font-weight: bold;'>{n1_equiv}/{correct_mmc}</p>
+        <p style='font-size: 20px; margin-top: 70px;'>Original: <strong>{n2}/{d2}</strong></p>
+        <p style='font-size: 44px; font-weight: bold;'>{n2_equiv}/{correct_mmc}</p>
+        """, unsafe_allow_html=True)
+
+    st.markdown(f"""
+    > **Como chegamos nisso?**
+    > * Para a primeira fração ($$\\frac{{{n1}}}{{{d1}}}$$): dividimos o MMC pelo denominador ($${correct_mmc} \\div {d1} = {correct_mmc//d1}$$). Depois, multiplicamos o numerador por esse resultado ($${n1} \\times {correct_mmc//d1} = {n1_equiv}$$).
+    > * Para a segunda fração ($$\\frac{{{n2}}}{{{d2}}}$$): fazemos o mesmo ($${correct_mmc} \\div {d2} = {correct_mmc//d2}$$), e então ($${n2} \\times {correct_mmc//d2} = {n2_equiv}$$).
+    """)
+
+    st.header("ETAPA 4: Qual é a Resposta Final?")
+    st.warning(f"Calcule o resultado de $$\\frac{{{n1_equiv}}}{{{correct_mmc}}} {op_select[0]} \\frac{{{n2_equiv}}}{{{correct_mmc}}}$$ e digite sua resposta abaixo.")
+
+    ans_n = st.number_input("Seu Numerador Final:", min_value=0, key="ans_n_final")
+    ans_d = st.number_input("Seu Denominador Final:", min_value=1, key="ans_d_final")
+
+    if st.button("Verificar Resposta Final", type="primary"):
+        st.session_state.step = "SHOW_FINAL"
+
+# ETAPA 5: CONFIRMAÇÃO VISUAL FINAL
+if st.session_state.step == "SHOW_FINAL":
     if op_select == 'Soma':
-        correct_n = (st.session_state.n1 * (common_d // st.session_state.d1)) + (st.session_state.n2 * (common_d // st.session_state.d2))
+        correct_n_final = n1_equiv + n2_equiv
     else:
-        correct_n = (st.session_state.n1 * (common_d // st.session_state.d1)) - (st.session_state.n2 * (common_d // st.session_state.d2))
+        correct_n_final = n1_equiv - n2_equiv
 
-    # Simplificar as duas respostas para comparar
-    correct_n_simple, correct_d_simple = simplify_fraction(correct_n, common_d)
-    user_n_simple, user_d_simple = simplify_fraction(st.session_state.ans_n, st.session_state.ans_d)
+    user_n_simple, user_d_simple = simplify_fraction(st.session_state.ans_n_final, st.session_state.ans_d_final)
+    correct_n_simple, correct_d_simple = simplify_fraction(correct_n_final, correct_mmc)
 
-    # Verificar
     if (user_n_simple, user_d_simple) == (correct_n_simple, correct_d_simple):
-        st.success("🚀 **CORRETO!** Resposta perfeita, Comandante! Veja a confirmação visual abaixo.")
+        st.success("🚀 **PERFEITO, COMANDANTE!** Cálculo exato. Missão cumprida!")
     else:
-        st.error(f"🚨 **QUASE LÁ!** Sua resposta foi {st.session_state.ans_n}/{st.session_state.ans_d}. A resposta correta é {correct_n}/{common_d}. Compare com a imagem abaixo e veja onde está a diferença.")
+        st.error(f"🚨 **RECALCULANDO...** Sua resposta foi $$\\frac{{{st.session_state.ans_n_final}}}{{{st.session_state.ans_d_final}}}$$. A resposta correta é $$\\frac{{{correct_n_final}}}{{{correct_mmc}}}$$. Compare com a confirmação visual.")
 
-# Mostrar o resultado final se o botão foi pressionado
-if st.session_state.step == 1:
-    st.subheader("ETAPA 4: Confirmação Visual")
-    result_img = create_fraction_bar_image(st.session_state.n1, st.session_state.d1, st.session_state.n2, st.session_state.d2, op_select, "Confirmação do Resultado", show_lcm=True, show_result=True)
-    st.image(result_img, use_container_width=True)
-
-if st.sidebar.button("Próximo Desafio (Limpar)", use_container_width=True):
-    st.session_state.step = 0
-    st.session_state.n1 = 1
-    st.session_state.d1 = 2
-    st.session_state.n2 = 1
-    st.session_state.d2 = 3
-    st.session_state.ans_n = 0
-    st.session_state.ans_d = 1
-    st.experimental_rerun() # Força a recarga da página com os valores resetados
+    st.header("ETAPA 5: Confirmação Visual do Resultado")
+    img_col3, text_col3 = st.columns([4, 1])
+    with img_col3:
+        final_img = create_fraction_bar_image([n1_equiv, n2_equiv, correct_n_final], [correct_mmc, correct_mmc, correct_mmc], ['#4A90E2', '#50E3C2', '#E34A7F'], title="Resultado Final")
+        st.image(final_img)
+    with text_col3:
+         st.markdown(f"<p style='font-size: 44px; font-weight: bold; margin-top: 70px;'>{n1_equiv}/{correct_mmc}</p>", unsafe_allow_html=True)
+         st.markdown(f"<p style='font-size: 44px; font-weight: bold; margin-top: 55px;'>{op_select[0]}</p>", unsafe_allow_html=True)
+         st.markdown(f"<p style='font-size: 44px; font-weight: bold; margin-top: 55px;'>{n2_equiv}/{correct_mmc}</p>", unsafe_allow_html=True)
+         st.markdown(f"<p style='font-size: 44px; font-weight: bold; margin-top: 55px;'>=</p>", unsafe_allow_html=True)
+         st.markdown(f"<p style='font-size: 44px; font-weight: bold; margin-top: 55px; color: #E34A7F;'>{correct_n_final}/{correct_mmc}</p>", unsafe_allow_html=True)
